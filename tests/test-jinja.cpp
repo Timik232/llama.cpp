@@ -458,6 +458,12 @@ static void test_expressions(testing & t) {
         "['b']"
     );
 
+    test_template(t, "array slice negative variable stop",
+        "{{ items[:-n]|string }}",
+        {{"items", json::array({"a", "b", "c"})}, {"n", 1}},
+        "['a', 'b']"
+    );
+
     test_template(t, "array slice step",
         "{{ items[::2]|string }}",
         {{"items", json::array({"a", "b", "c"})}},
@@ -492,6 +498,12 @@ static void test_expressions(testing & t) {
         "{{ (a + b) * c }}",
         {{"a", 2}, {"b", 3}, {"c", 4}},
         "20"
+    );
+
+    test_template(t, "unary minus arithmetic precedence",
+        "{{ -a + b }}",
+        {{"a", 2}, {"b", 5}},
+        "3"
     );
 
     test_template(t, "string concat ~",
