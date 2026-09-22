@@ -168,6 +168,7 @@ models = [
 
 # some models are known to be broken upstream, so we will skip them as exceptions
 pre_computed_hashes = [
+    {"name": "gpt-4o", "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/ai-sage/GFusion-10B-A1.8B-bf16", "chkhsh": "5c01b97b9959d897bb3670b43dd3cfe4ab93cef6280acd4d55a15e66d68213c9"},
     # chatglm-bpe has 2 hashes, why?
     {"name": "chatglm-bpe", "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/THUDM/glm-4-9b-chat", "chkhsh": "b6e8e1518dc4305be2fe39c313ed643381c4da5db34a98f6a04c093f8afbe99b"},
     {"name": "chatglm-bpe", "tokt": TOKENIZER_TYPE.BPE, "repo": "https://huggingface.co/THUDM/glm-4-9b-chat", "chkhsh": "81d72c7348a9f0ebe86f23298d37debe0a5e71149e29bd283904c02262b27516"},

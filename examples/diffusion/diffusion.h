@@ -10,6 +10,7 @@ enum diffusion_algorithm {
     DIFFUSION_ALGORITHM_MARGIN_BASED     = 2,
     DIFFUSION_ALGORITHM_RANDOM           = 3,
     DIFFUSION_ALGORITHM_CONFIDENCE_BASED = 4,
+    DIFFUSION_ALGORITHM_ENTROPY_BOUNDED  = 5,
 };
 
 // Unified transfer scheduling methods
@@ -46,8 +47,12 @@ struct diffusion_params {
     float   alg_temp         = 0;      // algorithm temperature (0.0 = deterministic)
     bool    add_gumbel_noise = false;  // Add gumbel noise to the logits if temp > 0.0
 
-    int32_t max_length = 0;            // Maximum sequence length
+    int32_t max_length     = 0;        // Maximum sequence length
+    int32_t max_new_tokens = -1;       // Maximum generated tokens, -1 = use max_length
+    float   gamma          = 0.15f;     // Entropy budget for entropy-bounded sampling
 };
+
+bool diffusion_model_supports_entropy_bounded(const llama_model * model);
 
 void diffusion_generate(llama_context *          ctx,
                         const llama_token *      input_tokens,

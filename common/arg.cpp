@@ -4459,7 +4459,7 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
         string_format(
             "diffusion algorithm: 0=DIFFUSION_ALGORITHM_ORIGIN, 1=DIFFUSION_ALGORITHM_ENTROPY_BASED, "
             "2=DIFFUSION_ALGORITHM_MARGIN_BASED, 3=DIFFUSION_ALGORITHM_RANDOM, "
-            "4=DIFFUSION_ALGORITHM_CONFIDENCE_BASED (default: %d)", params.diffusion.algorithm),
+            "4=DIFFUSION_ALGORITHM_CONFIDENCE_BASED, 5=DIFFUSION_ALGORITHM_ENTROPY_BOUNDED (default: %d)", params.diffusion.algorithm),
         [](common_params & params, int value) { params.diffusion.algorithm = value; }
     ).set_examples({ LLAMA_EXAMPLE_DIFFUSION }));
     add_opt(common_arg(

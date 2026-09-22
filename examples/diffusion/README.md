@@ -17,6 +17,7 @@ The diffusion CLI supports various parameters to control the generation process:
   - `2`: DIFFUSION_ALGORITHM_MARGIN_BASED - Margin-based selection
   - `3`: DIFFUSION_ALGORITHM_RANDOM - Random selection
   - `4`: DIFFUSION_ALGORITHM_CONFIDENCE_BASED - Confidence-based selection (default)
+  - `5`: DIFFUSION_ALGORITHM_ENTROPY_BOUNDED - Entropy-bounded selection used by GFusion
   - More documentation here https://github.com/DreamLM/Dream
 - `--diffusion-visual`: Enable live visualization during generation
 
@@ -57,3 +58,22 @@ llama-diffusion-cli -m llada-8b.gguf -p "write code to train MNIST in pytorch" -
 ```
 llama-diffusion-cli -m RND1-Base-0910.gguf -p "write code to train MNIST in pytorch" -ub 512 --diffusion-algorithm 1 --diffusion-steps 256 --diffusion-visual --temp 0.5 --diffusion-eps 0.001
 ```
+
+#### GFusion model:
+
+Convert the Hugging Face checkpoint first:
+
+```
+python convert_hf_to_gguf.py /path/to/GFusion-10B-A1.8B-bf16 --outfile GFusion-10B-A1.8B-BF16.gguf --outtype bf16
+```
+
+GFusion reuses the DeepSeek V2/V3 tensor layout with 32-token non-causal diffusion blocks.
+The implementation uses the reference entropy budget `gamma=0.15`. `--ubatch-size` must be at least
+the block length:
+
+```
+llama-diffusion-cli -m GFusion-10B-A1.8B-BF16.gguf -p "Explain virtual memory in Linux" -n 128 -c 2048 -b 32 -ub 32 --diffusion-block-length 32 --diffusion-steps 32 --diffusion-algorithm 5 --temp 0
+```
+
+For stochastic sampling with the reference filtering defaults (`top_k=None`, `top_p=None`),
+also pass `--top-k 0 --top-p 1.0` with a non-zero temperature.

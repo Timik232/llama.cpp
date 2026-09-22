@@ -1786,6 +1786,9 @@ class TextModel(ModelBase):
         if chkhsh == "ad851be1dba641f2e3711822f816db2c265f788b37c63b4e1aeacb9ee92de8eb":
             # ref: https://huggingface.co/ai-sage/GigaChat-20B-A3B-instruct
             res = "gigachat"
+        if chkhsh == "5c01b97b9959d897bb3670b43dd3cfe4ab93cef6280acd4d55a15e66d68213c9":
+            # ref: https://huggingface.co/ai-sage/GFusion-10B-A1.8B-bf16
+            res = "gpt-4o"
         if chkhsh == "d4c8f286ea6b520b3d495c4455483cfa2302c0cfcd4be05d781b6a8a0a7cdaf1":
             # ref: https://huggingface.co/Infinigence/Megrez-3B-Instruct
             res = "megrez"

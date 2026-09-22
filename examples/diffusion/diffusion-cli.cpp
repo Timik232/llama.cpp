@@ -7,6 +7,7 @@
 
 #include <limits.h>
 
+#include <algorithm>
 #include <clocale>
 #include <cstring>
 #include <string>
@@ -112,6 +113,13 @@ int main(int argc, char ** argv) {
         return 1;
     }
 
+    const bool entropy_bounded = params.diffusion.algorithm == DIFFUSION_ALGORITHM_ENTROPY_BOUNDED;
+    if (entropy_bounded && (params.diffusion.block_length <= 0 || params.diffusion.steps <= 0 ||
+            params.diffusion.eps != 0.0f || params.n_predict == 0)) {
+        LOG_ERR("error: entropy-bounded sampling requires positive steps, a block length, no timestep epsilon, and a non-zero token limit\n");
+        return 1;
+    }
+
     llama_backend_init();
 
     llama_model_params model_params = llama_model_default_params();
@@ -126,8 +134,21 @@ int main(int argc, char ** argv) {
         return 1;
     }
 
-    if (!llama_model_is_diffusion(model)) {
+    const bool entropy_bounded_model = diffusion_model_supports_entropy_bounded(model);
+
+    if (!llama_model_is_diffusion(model) && !entropy_bounded_model) {
         LOG_ERR("error: unsupported model for diffusion");
+        llama_model_free(model);
+        return 1;
+    }
+
+    if (entropy_bounded && !entropy_bounded_model) {
+        LOG_ERR("error: entropy-bounded cached block generation is not supported by this model\n");
+        llama_model_free(model);
+        return 1;
+    }
+    if (entropy_bounded_model && !entropy_bounded) {
+        LOG_ERR("error: this model requires entropy-bounded cached block generation\n");
         llama_model_free(model);
         return 1;
     }
@@ -154,13 +175,20 @@ int main(int argc, char ** argv) {
 
     std::string         formatted_prompt = format_input_text(params.prompt, params.system_prompt, params.enable_chat_template, model);
 
+    // GigaChat3 renders BOS but no trailing EOS. Re-add only BOS after the common chat
+    // renderer removes it, instead of applying all tokenizer-configured special tokens.
+    const bool entropy_bounded_chat = params.enable_chat_template && entropy_bounded_model;
+
     std::vector<llama_token> input_tokens = common_tokenize(vocab,
                                                             formatted_prompt,
-                                                            /*add special tokens*/ true,
+                                                            /*add special tokens*/ !entropy_bounded_chat,
                                                             /*parse special*/ true);
 
-    int n_input = input_tokens.size();
+    if (entropy_bounded_chat && llama_vocab_get_add_bos(vocab)) {
+        input_tokens.insert(input_tokens.begin(), llama_vocab_bos(vocab));
+    }
 
+    int n_input = input_tokens.size();
     if (static_cast<uint32_t>(n_input) >= llama_n_ctx(ctx)) {
         LOG_ERR("error: input too long (%d tokens), max context is %d\n", n_input, llama_n_ctx(ctx));
         llama_free(ctx);
@@ -174,8 +202,7 @@ int main(int argc, char ** argv) {
 
     bool visual_mode = params.diffusion.visual_mode;
 
-    int32_t                  n_generated = 0;
-    std::vector<llama_token> output_tokens(params.n_ubatch);
+    int32_t n_generated = 0;
 
     struct diffusion_params diff_params;
 
@@ -202,11 +229,18 @@ int main(int argc, char ** argv) {
     diff_params.temperature      = params.sampling.temp;
     diff_params.steps            = params.diffusion.steps;
     diff_params.algorithm        = static_cast<diffusion_algorithm>(params.diffusion.algorithm);
-    diff_params.max_length       = params.n_ubatch;
     diff_params.top_p            = params.sampling.top_p;
     diff_params.top_k            = params.sampling.top_k;
     diff_params.visual_mode      = params.diffusion.visual_mode;
     diff_params.add_gumbel_noise = params.diffusion.add_gumbel_noise;
+
+    diff_params.max_length = params.n_ubatch;
+    if (diff_params.algorithm == DIFFUSION_ALGORITHM_ENTROPY_BOUNDED) {
+        diff_params.max_length = llama_n_ctx(ctx);
+        diff_params.max_new_tokens = params.n_predict;
+    }
+
+    std::vector<llama_token> output_tokens(diff_params.max_length);
 
     diff_params.step_callback           = diffusion_step_callback;
     callback_data cb_data               = { &diff_params, vocab, n_input };
@@ -218,13 +252,14 @@ int main(int argc, char ** argv) {
         "DIFFUSION_ALGORITHM_MARGIN_BASED",
         "DIFFUSION_ALGORITHM_RANDOM",
         "DIFFUSION_ALGORITHM_CONFIDENCE_BASED",
+        "DIFFUSION_ALGORITHM_ENTROPY_BOUNDED",
     };
     const char * sched_names[] = {
         "DIFFUSION_TRANSFER_SCHEDULE_TIMESTEP_BASED",
         "DIFFUSION_TRANSFER_SCHEDULE_BLOCK_BASED",
     };
     const char * alg_name =
-        (diff_params.algorithm >= 0 && diff_params.algorithm <= 4) ? alg_names[diff_params.algorithm] : "UNKNOWN";
+        (diff_params.algorithm >= 0 && diff_params.algorithm <= 5) ? alg_names[diff_params.algorithm] : "UNKNOWN";
     const char * sched_name =
         (diff_params.schedule >= 0 && diff_params.schedule <= 1) ? sched_names[diff_params.schedule] : "UNKNOWN";
 
@@ -234,6 +269,10 @@ int main(int argc, char ** argv) {
     LOG_INF("diffusion_params: - %-25s enum             = %d (%s)\n", "algorithm", diff_params.algorithm, alg_name);
     LOG_INF("diffusion_params: - %-25s enum             = %d (%s)\n", "schedule", diff_params.schedule, sched_name);
     LOG_INF("diffusion_params: - %-25s f32              = %.3f\n", "temperature", diff_params.temperature);
+    if (diff_params.algorithm == DIFFUSION_ALGORITHM_ENTROPY_BOUNDED) {
+        LOG_INF("diffusion_params: - %-25s f32              = %.3f\n", "gamma", diff_params.gamma);
+        LOG_INF("diffusion_params: - %-25s u32              = %d\n", "max_new_tokens", diff_params.max_new_tokens);
+    }
     if (diff_params.schedule == DIFFUSION_TRANSFER_SCHEDULE_TIMESTEP_BASED) {
         LOG_INF("diffusion_params: - %-25s f32              = %.6f\n", "eps", diff_params.eps);
         LOG_INF("diffusion_params: - %-25s f32              = %.3f\n", "alg_temp", diff_params.alg_temp);
@@ -251,6 +290,9 @@ int main(int argc, char ** argv) {
             LOG_INF("\033[2J\033[H");
         }
 
+        if (entropy_bounded) {
+            output_tokens.resize(std::min(output_tokens.size(), (size_t) n_input + n_generated));
+        }
         output_tokens.erase(output_tokens.begin(), output_tokens.begin() + n_input);
         std::string output_data = common_detokenize(vocab, output_tokens, false);
         LOG_INF("\n%s\n", output_data.c_str());

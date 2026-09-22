@@ -226,13 +226,14 @@ class DeepseekModel(TextModel):
     "DeepseekV2ForCausalLM",
     "DeepseekV3ForCausalLM",
     "DeepseekOCRForCausalLM",
+    "GFusionForDiffusionLM",
     "UnlimitedOCRForCausalLM",
     "KimiVLForConditionalGeneration",
     "KimiK25ForConditionalGeneration",
     "YoutuForCausalLM",
     "YoutuVLForConditionalGeneration",
 )
-@ModelBase.example("deepseek-ai/DeepSeek-V2-Lite", "deepseek-ai/DeepSeek-V3")
+@ModelBase.example("deepseek-ai/DeepSeek-V2-Lite", "deepseek-ai/DeepSeek-V3", "ai-sage/GFusion-10B-A1.8B-bf16")
 class DeepseekV2Model(TextModel):
     model_arch = gguf.MODEL_ARCH.DEEPSEEK2
 
@@ -356,6 +357,11 @@ class DeepseekV2Model(TextModel):
         # For non-MoE models like Youtu, use intermediate_size as expert_feed_forward_length
         moe_intermediate_size = self.find_hparam(["moe_intermediate_size", "intermediate_size"], optional=False)
         self.gguf_writer.add_expert_feed_forward_length(moe_intermediate_size)
+
+        if self.origin_hf_arch == "GFusionForDiffusionLM":
+            self.gguf_writer.add_causal_attention(False)
+            self.gguf_writer.add_mask_token_id(self.hparams.get("mask_token_id", 128170))
+            self.gguf_writer.add_diffusion_shift_logits(False)
 
         if (n_routed_experts := hparams.get("n_routed_experts")) is not None:
             self.gguf_writer.add_expert_count(n_routed_experts)
